@@ -1,5 +1,10 @@
-package screencaptureserver;
+package remotedesktop;
 
+/**
+ *
+ * @author Slam
+ */
+import java.awt.GraphicsEnvironment;
 import java.awt.KeyEventDispatcher;
 import java.awt.KeyboardFocusManager;
 import java.awt.Rectangle;
@@ -11,20 +16,26 @@ import java.awt.image.BufferedImage;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.URLDecoder;
 import java.util.Date;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Scanner;
 
 import javax.imageio.ImageIO;
 
-public class ScreenCaptureServer implements KeyEventDispatcher {
+public class RemoteDesktop implements KeyEventDispatcher {
 
     enum HttpStatus {
         OK(200, "OK"),
@@ -40,26 +51,78 @@ public class ScreenCaptureServer implements KeyEventDispatcher {
         }
     }
 
-    private static final int SERVER_PORT = 8080;
+    private static final int SERVER_PORT = 3000;
     private static final String FORMAT = "jpeg";
     private static String HOST_NAME;
     private static String HOST_ADDR;
     private ServerSocket serverSocket;
     private Robot robot;
     private Map<String, Integer> keyCombos;
+    private String currentDirectory;
+    private File dir;
 
     public static void main(String[] args) throws Exception {
         HOST_NAME = InetAddress.getLocalHost().getHostName();
         HOST_ADDR = InetAddress.getLocalHost().getHostAddress();
-        System.out.println("Starting ScreenCaptureServer on: http://" + HOST_ADDR + ":8080");
-        new ScreenCaptureServer().run();
+        System.out.println("Starting ScreenCaptureServer on: http://" + HOST_ADDR + ":" + SERVER_PORT);
+        String msg = "Este es un mensaje informativo, si puedes verlo significa que está funcionando correctamente el servicio remoto\n"
+                + "Envía al chat la siguiente información o captura la pantalla:\n"
+                + HOST_NAME + "-> " + getMyPublicIP();
+        System.out.println(msg);
+        //JOptionPane.showMessageDialog(null, msg);
+        if (GraphicsEnvironment.isHeadless()) {
+            System.out.println("Running in headless mode");
+            // Evitar usar clases como Robot aquí 
+            // modo solo consola o terminal
+            System.out.println("Activando modo consola");
+
+            new RemoteDesktop(true).runTerminalMode();
+        } else {
+            // Modo UI 
+            System.out.println("Modo gráfico activo");
+            new RemoteDesktop(false).run();
+        }
+
     }
 
-    public ScreenCaptureServer() throws Exception {
+    public void runTerminalMode() {
+        String startDirectory = System.getProperty("user.dir");
+        JFileExplorer explorer = new JFileExplorer(startDirectory);
+        explorer.start();
+    }
+
+    public static String getMyPublicIP() {
+        String res = "";
+        try {
+            Enumeration<NetworkInterface> eths = NetworkInterface.getNetworkInterfaces();
+            while (eths.hasMoreElements()) {
+                NetworkInterface ni = eths.nextElement();
+                if (ni.isUp() && ni.supportsMulticast()) {
+                    Enumeration<InetAddress> inets = ni.getInetAddresses();
+                    while (inets.hasMoreElements()) {
+                        InetAddress ia = inets.nextElement();
+                        if (ia.isSiteLocalAddress()) {
+                            res += ia.toString();
+                        }
+                    }
+                }
+            }
+        } catch (SocketException ex) {
+            System.err.println("SocketEx: " + ex.getMessage());
+        }
+        return res;
+    }
+
+    public RemoteDesktop(boolean isTerminal) throws Exception {
         serverSocket = new ServerSocket(SERVER_PORT);
         serverSocket.setReuseAddress(true);
-        robot = new Robot();
-        keyCombos = getKeyCombos();
+        String startDirectory = System.getProperty("user.dir");
+        this.currentDirectory = new File(startDirectory).getAbsolutePath();
+        this.dir = new File(currentDirectory);
+        if (!isTerminal) {
+            robot = new Robot();
+            keyCombos = getKeyCombos();
+        }
     }
 
     public void run() {
@@ -210,6 +273,16 @@ public class ScreenCaptureServer implements KeyEventDispatcher {
     }
 
     private void simulateKeystrokes(String text) {
+
+        for (char ch : text.toCharArray()) {
+            int keyCode = KeyEvent.getExtendedKeyCodeForChar(ch);
+            if (keyCode != KeyEvent.VK_UNDEFINED) {
+                sendKeyPress(keyCode);
+            }
+        }
+        System.out.println("Typed: " + text);
+
+        /*
         String[] textSplit = text.split(" ");
         for (String word : textSplit) {
             if (keyCombos.containsKey(word.toLowerCase()) || keyCombos.containsKey(word.toUpperCase())) {
@@ -225,9 +298,9 @@ public class ScreenCaptureServer implements KeyEventDispatcher {
                     }
                 }
             }
-        }
+        }*/
     }
-    
+
     private void sendKeyPress(int keyCode) {
         robot.keyPress(keyCode);
         robot.keyRelease(keyCode);
@@ -252,4 +325,148 @@ public class ScreenCaptureServer implements KeyEventDispatcher {
     private static void writeLog(String message) {
         System.out.println(message);
     }
+}
+
+class JFileExplorer {
+
+    private String currentDirectory;
+    private File dir;
+
+    public JFileExplorer(String startDirectory) {
+        this.currentDirectory = new File(startDirectory).getAbsolutePath();
+        this.dir = new File(currentDirectory);
+    }
+
+    public void start() {
+        Scanner scanner = new Scanner(System.in);
+        String command;
+
+        while (true) {
+            System.out.print(currentDirectory + "> ");
+            command = scanner.nextLine().trim();
+
+            if (command.equals("exit")) {
+                break;
+            }
+
+            if (command.startsWith("cd")) {
+                changeDirectory(command);
+            } else if (command.startsWith("ls")) {
+                listFiles();
+            } else if (command.startsWith("cat")) {
+                concatenate(command); //cat command for display file content
+            } /*else if (command.startsWith("cls") || command.startsWith("clear")) {
+                clear(); //clear screen
+            }*/ else if (command.startsWith("help")) {
+                System.out.println("Commands:");
+                System.out.println("help - Show this texts");
+                System.out.println("exit - Exits the program");
+            } else {
+                executeCommand(command);
+            }
+        }
+    }
+
+    private void executeCommand(String command) {
+        try {
+            ProcessBuilder builder = new ProcessBuilder();
+            // Determina si usar shell/bash o cmd
+            if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                builder.command("cmd.exe", "/c", command);
+            } else {
+                builder.command("sh", "-c", command);
+            }
+
+            builder.redirectErrorStream(true);
+            Process process = builder.start();
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                //currentDirectory = line;
+                System.out.println(line);
+            }
+
+            int exitCode = process.waitFor();
+            System.out.println("\nExited with code: " + exitCode);
+        } catch (Exception e) {
+            System.err.println("E: " + e.getMessage());
+        }
+    }
+
+    private void changeDirectory(String cmdWithPath) {
+        String[] input = cmdWithPath.split(" ", 2);
+
+        if (input.length > 1) {
+            String path = input[1].trim();
+
+            if (path.equals("..")) {
+                dir = new File(currentDirectory).getParentFile();
+            } else if (path.equals(".")) {
+                dir = new File(currentDirectory);
+            } else {
+                dir = new File(path);
+                if (!dir.isAbsolute()) {
+                    dir = new File(currentDirectory, path);
+                }
+            }
+
+            if (dir != null && dir.exists() && dir.isDirectory()) {
+                try {
+                    currentDirectory = dir.getCanonicalPath();
+                } catch (IOException e) {
+                    System.out.println("Error obtaining canonical path: " + e.getMessage());
+                }
+            } else {
+                System.out.println("Directory does not exist: " + path);
+            }
+        } else {
+            System.out.println("No directory specified.");
+        }
+    }
+
+    private void listFiles() {
+        if (dir != null) {
+            for (File files : dir.listFiles()) {
+                if (files.isFile()) {
+                    System.out.println(
+                            (files.canRead() ? "r" : "-")
+                            + (files.canWrite() ? "w" : "-")
+                            + (files.canExecute() ? "x" : "-")
+                            + " " + new Date(files.lastModified()).toString()
+                            + " " + files.length()
+                            + " --> " + files.getName() + " (FILE)");
+                } else if (files.isDirectory()) {
+                    System.out.println(
+                            (files.canRead() ? "r" : "-")
+                            + (files.canWrite() ? "w" : "-")
+                            + (files.canExecute() ? "x" : "-")
+                            + " " + new Date(files.lastModified()).toString()
+                            + " " + files.length()
+                            + " --> " + files.getName() + " (DIR)");
+                }
+            }
+        }
+    }
+
+    private void concatenate(String command) {
+        String[] splCMD = command.split(" ", 2);
+        if (splCMD.length > 1) {
+            try {
+                File cfile = new File(dir, splCMD[1]);
+                BufferedReader br = new BufferedReader(new FileReader(cfile));
+                String line;
+                while ((line = br.readLine()) != null) {
+                    System.out.println(line);
+                }
+            } catch (IOException ex) {
+                System.out.println("IOE: " + ex.getMessage());
+            }
+        }
+    }
+
+    /*private void clear() { // cls or clear screen
+        System.out.print("\033[H\033[2J");
+        System.out.flush();
+    }*/
 }
