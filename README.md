@@ -8,6 +8,6 @@ Screenshots are taken through the Robot class.
 Keybindings are handled with HashMaps.
 Web server publishing is done with SocketServer.
 # How to use
-- Compile and build with NetBeans
-- in the console (terminal) run java -jar compiled.jar
+- Clean and build with NetBeans
+- in the console (terminal) run java -jar compiled.jar or directly from Netbeans for debugging purposes.
 - if it is a headless environment (no UI or X11): run in terminal mode with most commands available for each OS.
