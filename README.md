@@ -1,7 +1,7 @@
 # jRDesktop
 Remote Desktop Server for Java
 
-Java implementation for screenshot, terminal access and keystroke handling using a web browser as the interface when there is no headless environment.
+Java implementation for screenshot, terminal access and keystroke handling using a web browser or console "terminal" as the interface when there is no headless environment.
 
 Needs some improvements in handling keystrokes and combinations.
 Screenshots are taken through the Robot class.
